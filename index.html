@@ -581,7 +581,7 @@ Drawn signature:`;
     try {
       const { file } = await buildPdfFile();
       const url = URL.createObjectURL(file);
-      const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+      const a = document.createElement('a'); a.href = url; a.rel = 'noopener';  a.target = '_blank'; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1500);
       toast('PDF downloaded. You can attach it to any email or messenger.');
     } catch (e){
