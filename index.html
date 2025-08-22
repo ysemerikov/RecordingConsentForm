@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Consent to Video & Audio Recording</title>
+  <style>
+    :root { --maxw: 860px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; line-height: 1.4; margin: 0; background: #f7f7f8; color:#111827; }
+    header { background: white; border-bottom: 1px solid #e5e7eb; }
+    .wrap { max-width: var(--maxw); margin: 0 auto; padding: 20px; }
+    h1 { font-size: 1.35rem; margin: 0; }
+    form { background: white; padding: 18px; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    fieldset { border: 0; padding: 0; margin: 0 0 14px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 700px){ .row { grid-template-columns: 1fr; } }
+    label { display: block; font-size: .92rem; color: #374151; margin: 10px 0 6px; }
+    input, textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 10px; font: inherit; background: #fff; }
+    input[disabled] { background:#f9fafb; color:#6b7280; }
+    textarea { min-height: 160px; white-space: pre-wrap; }
+    .muted { color:#6b7280; font-size: .9rem; }
+    .sig-wrap { border: 1px dashed #9ca3af; border-radius: 10px; padding: 10px; background: #fafafa; transition: border-color .15s ease, box-shadow .15s ease; }
+    .sig-wrap.invalid { border-color:#ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.15); }
+    canvas { width: 100%; height: 220px; touch-action: none; background: white; border-radius: 8px; border: 1px solid #e5e7eb; }
+    @media (max-width: 480px){ canvas { height: 180px; } }
+    .btns { display:flex; gap:10px; flex-wrap: wrap; margin-top: 14px; }
+    button, .btn { cursor: pointer; border: 1px solid transparent; padding: 10px 14px; border-radius: 10px; background: #111827; color: white; font-weight: 600; }
+    .btn.secondary { background: #f3f4f6; color:#111827; border-color:#e5e7eb; }
+    .success { color:#065f46; background:#ecfdf5; border:1px solid #a7f3d0; padding:10px 12px; border-radius:10px; }
+    .small { font-size: .85rem; color:#6b7280; }
+    .hidden { display:none !important; }
+    .info { background:#eef2ff; border:1px solid #c7d2fe; color:#1e3a8a; padding:10px 12px; border-radius:10px; }
+    .field-error { color:#991b1b; background:#fef2f2; border:1px solid #fecaca; padding:8px 10px; border-radius:8px; margin-top:8px; font-size:.85rem; }
+    .check-wrap { display:flex; align-items:center; gap:10px; width:100%; margin-top:10px; }
+    .check-wrap input[type="checkbox"] { flex:0 0 auto; width:18px; height:18px; }
+    .check-wrap label { margin:0; flex:1 1 auto; line-height:1.35; text-align:left; white-space:normal; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>Consent to Video & Audio Recording (Georgia, USA)</h1>
+    </div>
+  </header>
+  <main class="wrap">
+    <form id="consentForm" novalidate autocomplete="on">
+      <fieldset class="row">
+        <div>
+          <label for="fullName">Full Name (as on ID) *</label>
+          <input id="fullName" name="name" required placeholder="John A. Doe"
+                 autocomplete="name" autocapitalize="words" spellcheck="false" />
+        </div>
+        <div>
+          <label for="dob">Date of Birth *</label>
+          <!-- Native browser date picker; optional in validation, star stays in UI -->
+          <input id="dob" name="bday" type="date" min="1900-01-01" autocomplete="bday" />
+        </div>
+      </fieldset>
+
+      <fieldset class="row">
+        <div>
+          <label for="phone">Phone *</label>
+          <input id="phone" name="phone" type="tel" required
+                 placeholder="(404) 555-1234" autocomplete="tel" inputmode="tel" spellcheck="false" />
+        </div>
+        <div>
+          <label for="email">Email (optional)</label>
+          <input id="email" name="email" type="email"
+                 placeholder="name@example.com" autocomplete="email"
+                 autocapitalize="none" spellcheck="false" />
+        </div>
+      </fieldset>
+
+      <fieldset id="childrenFieldset">
+        <label for="children">Child’s Full Name(s) <span class="muted">(if several, separate by commas)</span></label>
+        <input id="children" name="children" placeholder="Jane Doe, Jack Doe" autocomplete="off" />
+        <div class="check-wrap">
+          <input id="noChildren" name="noChildren" type="checkbox" autocomplete="off" />
+          <label for="noChildren">I confirm there are no children.</label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <label>Drawn Signature (finger/stylus) *</label>
+        <div class="sig-wrap" id="sigWrap">
+          <canvas id="sig"></canvas>
+          <div class="btns">
+            <button type="button" class="btn secondary" id="clearSig">Clear signature</button>
+          </div>
+          <div class="small">Tip: rotate your phone to landscape for easier signing.</div>
+          <div id="sigError" class="field-error hidden">Please provide a drawn signature.</div>
+        </div>
+      </fieldset>
+
+      <div class="info" style="margin-bottom:12px">
+        Please email the generated PDF to
+        <a href="mailto:yury.semerikov@gmail.com">yury.semerikov@gmail.com</a>.
+      </div>
+
+      <input type="text" name="website" id="website" class="hidden" autocomplete="off" tabindex="-1" />
+
+      <div class="btns">
+        <button id="sendBtn" type="submit">Generate PDF & Send</button>
+        <button id="downloadOnlyBtn" type="button" class="btn secondary">Download PDF only</button>
+        <button id="downloadBtn" type="button" class="btn secondary hidden">Download PDF</button>
+      </div>
+
+      <div id="msg" style="margin-top:12px" role="status" aria-live="polite" tabindex="-1"></div>
+
+      <fieldset style="margin-top:14px">
+        <div class="small" style="margin:6px 0 6px">Preview below is the exact text that will be embedded in the PDF.</div>
+        <div id="consentPreview" class="md-preview"></div>
+        <textarea id="consentText" name="consentText" class="hidden" readonly></textarea>
+      </fieldset>
+    </form>
+  </main>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.2.0/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+
+  <script>
+  // ====== SETTINGS ======
+  const SEND_MODE = 'auto';
+  const EMAIL_TO = 'yury.semerikov@gmail.com';
+  const FORMSPREE_ENDPOINT = '';
+  const RESIDENCE_ADDRESS = '7008 Richland Ct, Roswell, GA 30076';
+  // ====== /SETTINGS ======
+
+  // ====== TEMPLATE ======
+  const CONSENT_MD_TEMPLATE = `**Consent to Video and Audio Recording at Private Residence**
+**(Georgia, USA)**
+
+I, [Full Name], DOB: [DOB], hereby give my informed, voluntary, and ongoing consent to the use of visible (non-hidden) video and audio recording devices located at the residence at [Full Address].
+
+### 1. Scope of Recording
+I acknowledge and understand the following:
+* Security cameras are installed in common areas of the property and not in bathrooms or toilets.
+* The cameras may record both video and audio. Because sound can carry, the recording equipment may capture audio originating from any room within the residence or unit and from immediately adjacent exterior areas (e.g., porch, driveway, yard), even if no camera is physically present in that specific space.
+* Upon request, I may be shown the exact location of all installed cameras.
+
+### 2. Duration of Consent
+This consent applies to:
+* My current and any future visits to the above address, and
+* Remains effective until I revoke it as described below.
+
+### 3. Revocation of Consent
+To revoke this consent, I must:
+* Send written notice to yury.semerikov@gmail.com at least 24 hours before the desired effective time.
+
+Upon revocation, I agree to promptly leave the premises and to notify any adult household member at the earliest possible opportunity.
+
+### 4. Waiver and Release
+I waive and release the homeowner from any civil claims arising from such recordings, except in cases of willful misconduct or gross negligence.
+
+### 5. Electronic Signature
+Electronic signatures shall be deemed originals under the U.S. E-SIGN Act.
+
+### 6. Acknowledgment
+I understand and accept all terms described above and confirm that I am signing this consent voluntarily. I confirm that I am at least 18 years of age and legally competent to sign this consent.
+
+### 7. Consent for Minors
+As the parent or legal guardian of [Child’s Full Name(s)], I also provide consent on their behalf under the same terms and conditions.
+
+---
+Name: [Full Name]
+Phone: [Phone Number]
+Email: [Email Address]
+Date: [MM/DD/YYYY]
+Drawn signature:`;
+  // ====== /TEMPLATE ======
+
+  const form = document.getElementById('consentForm');
+  const sigCanvas = document.getElementById('sig');
+  const sigWrap = document.getElementById('sigWrap');
+  const sigError = document.getElementById('sigError');
+  const clearSigBtn = document.getElementById('clearSig');
+  const msgEl = document.getElementById('msg');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const downloadOnlyBtn = document.getElementById('downloadOnlyBtn');
+  const sendBtn = document.getElementById('sendBtn');
+  const consentTextTA = document.getElementById('consentText');
+  const consentPreviewEl = document.getElementById('consentPreview');
+  const childrenEl = document.getElementById('children');
+  const noChildrenEl = document.getElementById('noChildren');
+  const emailEl = document.getElementById('email');
+  const dobEl = document.getElementById('dob');
+
+  function resizeCanvas() {
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const rect = sigCanvas.getBoundingClientRect();
+    sigCanvas.width = rect.width * ratio;
+    sigCanvas.height = parseInt(getComputedStyle(sigCanvas).height, 10) * ratio;
+    const ctx = sigCanvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  const signaturePad = new SignaturePad(sigCanvas, { minWidth: 0.7, maxWidth: 1.6, penColor: '#111827' });
+  clearSigBtn.addEventListener('click', () => { signaturePad.clear(); sigWrap.classList.remove('invalid'); sigError.classList.add('hidden'); });
+  sigCanvas.addEventListener('pointerdown', () => { sigWrap.classList.remove('invalid'); sigError.classList.add('hidden'); });
+
+  function toast(html, type = 'success') {
+    msgEl.innerHTML = `<div class="${type}">${html}</div>`;
+    msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    msgEl.focus({ preventScroll: true });
+  }
+  const fmt = v => (v || '').toString().trim();
+
+  function todayYYYYMMDD(){
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function slugifyName(s){
+    return (s || 'anon')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_{2,}/g, '_');
+  }
+
+  // Format DOB for template/email as MM/DD/YYYY from <input type="date"> (YYYY-MM-DD)
+  function dobAsMMDDYYYY(){
+    const v = dobEl.value;
+    if (!v) return '';
+    const [y,m,d] = v.split('-');
+    if (!y || !m || !d) return '';
+    return `${m}/${d}/${y}`;
+  }
+
+  function collectData(){
+    return {
+      fullName: fmt(document.getElementById('fullName').value),
+      dob: dobAsMMDDYYYY(),
+      phone: fmt(document.getElementById('phone').value),
+      email: fmt(emailEl.value),
+      children: fmt(childrenEl.value),
+      noChildren: !!noChildrenEl.checked,
+      now: (() => {
+        const t = new Date();
+        const mm = String(t.getMonth()+1).padStart(2,'0');
+        const dd = String(t.getDate()).padStart(2,'0');
+        const yyyy = t.getFullYear();
+        return `${mm}/${dd}/${yyyy}`;
+      })(),
+    };
+  }
+
+  // ASCII/Latin-only regexes
+  const NAME_ASCII = /^[A-Za-z0-9 .,'-]+$/;
+  const CHILDREN_ASCII = /^[A-Za-z0-9 .,'-]+(?:\s*,\s*[A-Za-z0-9 .,'-]+)*$/;
+  const PHONE_ASCII = /^[0-9()+\-.\s]+$/;
+
+  function scrollAndFocus(el){
+    el.scrollIntoView({ behavior:'smooth', block:'center' });
+    try { el.focus({ preventScroll:true }); } catch {}
+  }
+
+  function clearCustomValidityAll(){
+    ['fullName','dob','phone','email','children'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.setCustomValidity('');
+    });
+  }
+
+  function raise(el, message){
+    el.setCustomValidity(message || 'Invalid');
+    el.reportValidity();
+    scrollAndFocus(el);
+    throw new Error('__validation__');
+  }
+
+  function validateOptionalEmail(){
+    const v = fmt(emailEl.value);
+    if (v && !emailEl.checkValidity()){
+      raise(emailEl, 'Please enter a valid email address or clear the field.');
+    }
+    emailEl.setCustomValidity('');
+  }
+
+  function toggleChildrenDisabled(){
+    if (noChildrenEl.checked){
+      childrenEl.disabled = true;
+      childrenEl.value = '';
+      childrenEl.setCustomValidity('');
+    } else {
+      childrenEl.disabled = false;
+    }
+    renderConsentPreview();
+  }
+  noChildrenEl.addEventListener('change', toggleChildrenDisabled);
+
+  function renderConsentPreview(){
+    const data = collectData();
+    let s = CONSENT_MD_TEMPLATE;
+
+    const baseTokens = {
+      '\\[Full Address\\]': RESIDENCE_ADDRESS,
+      '\\[Full Name\\]': data.fullName || '[Full Name]',
+      '\\[Phone Number\\]': data.phone || '[Phone Number]',
+      '\\[Email Address\\]': data.email || '[Email Address]',
+      '\\[MM\\/DD\\/YYYY\\]': data.now,
+    };
+    for (const [re, val] of Object.entries(baseTokens)){
+      s = s.replace(new RegExp(re, 'g'), val);
+    }
+
+    // DOB handling: insert if present; if not, drop ", DOB: [DOB], "
+    if (data.dob){
+      s = s.replace(/\[DOB\]/g, data.dob);
+    } else {
+      s = s.replace(/,\s*DOB:\s*\[DOB\],\s*/g, ', ');
+    }
+
+    // Children block
+    if (!(data.children && !data.noChildren)) {
+      s = s.replace(/\n### 7\.[\s\S]*?\n---/, '\n---');
+    } else {
+      s = s.replace(/\[Child’s Full Name\(s\)\]/g, data.children);
+    }
+
+    // If no email, drop Email line
+    if (!data.email){
+      s = s.replace(/^\s*Email:\s*\[Email Address\]\s*$/m, '').replace(/\n{3,}/g, '\n\n');
+    }
+
+    consentTextTA.value = s;
+    const html = DOMPurify.sanitize(marked.parse(s));
+    consentPreviewEl.innerHTML = html;
+
+    return s;
+  }
+
+  // Live updates
+  ['fullName','phone','email','children','dob'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => { el.setCustomValidity(''); renderConsentPreview(); });
+    el.addEventListener('change', () => { el.setCustomValidity(''); renderConsentPreview(); });
+  });
+
+  // Unified validation (Name → DOB → Phone → Email → Children → Signature)
+  function validateFormOrThrow(){
+    clearCustomValidityAll();
+
+    const fullNameEl = document.getElementById('fullName');
+    if (!fmt(fullNameEl.value)) raise(fullNameEl, 'Full Name is required.');
+    if (!NAME_ASCII.test(fullNameEl.value)) raise(fullNameEl, "Use English letters/digits and common symbols only: space . , ' -");
+
+    // DOB is optional; if provided, rely on built-in validity only
+    if (dobEl.value && !dobEl.checkValidity()){
+      raise(dobEl, 'Please enter a valid date (YYYY-MM-DD).');
+    }
+
+    const phoneEl = document.getElementById('phone');
+    if (!fmt(phoneEl.value)) raise(phoneEl, 'Phone is required.');
+    if (!PHONE_ASCII.test(phoneEl.value)) raise(phoneEl, 'Phone can include digits, spaces, +, -, (), and . only.');
+
+    validateOptionalEmail();
+
+    const data = collectData();
+    if (!data.children && !data.noChildren){
+      raise(childrenEl, 'Please enter child’s full name(s) or check “I confirm there are no children.”');
+    }
+    if (data.children && !CHILDREN_ASCII.test(data.children)){
+      raise(childrenEl, "For names, use English letters/digits and , . ' - (comma-separated).");
+    }
+
+    if (!signaturePad || signaturePad.isEmpty()){
+      sigWrap.classList.add('invalid');
+      sigError.classList.remove('hidden');
+      scrollAndFocus(sigCanvas);
+      throw new Error('__validation__');
+    } else {
+      sigWrap.classList.remove('invalid');
+      sigError.classList.add('hidden');
+    }
+  }
+
+  // Markdown → PDF
+  function stripInlineBold(t){ return t.replace(/\*\*(.*?)\*\*/g, '$1'); }
+  function drawMarkdown(doc, text, startY){
+    const margin = 48;
+    const paraX = margin + 12;
+    const listX = margin + 18;
+    const wrapW = 540;
+    const pageH = doc.internal.pageSize.getHeight();
+
+    let y = startY;
+    let firstBoldSeen = false;
+
+    function ensureSpace(h=14){
+      if (y + h > pageH - margin){
+        doc.addPage();
+        y = margin;
+      }
+    }
+
+    const lines = text.split('\n');
+
+    for (let raw of lines){
+      const line = raw.replace(/\r/g,'');
+      if (!line.trim()) { ensureSpace(4); y += 4; continue; }
+      if (line.trim() === '---') { ensureSpace(16); y += 16; continue; }
+
+      if (/^###\s+/.test(line)){
+        doc.setFont('helvetica','bold'); doc.setFontSize(11);
+        ensureSpace(14);
+        doc.text(line.replace(/^###\s+/, '').trim(), margin, y);
+        y += 12; continue;
+      }
+
+      if (/^\*\*.*\*\*$/.test(line.trim())){
+        const plain = stripInlineBold(line.trim());
+        const isSignatureLabel = /^Drawn signature:$/i.test(plain.trim());
+        doc.setFont('helvetica','bold');
+
+        if (!firstBoldSeen){
+          doc.setFontSize(15);
+          const wrapped = doc.splitTextToSize(plain, wrapW);
+          ensureSpace(18 * wrapped.length);
+          doc.text(wrapped, margin, y);
+          y += 18; firstBoldSeen = true;
+        } else if (isSignatureLabel){
+          doc.setFontSize(10);
+          ensureSpace(12);
+          doc.text(plain, paraX, y);
+          y += 6;
+        } else {
+          doc.setFontSize(11);
+          const wrapped = doc.splitTextToSize(plain, wrapW);
+          ensureSpace(14 * wrapped.length);
+          doc.text(wrapped, margin, y);
+          y += 12;
+        }
+        continue;
+      }
+
+      if (/^\*\s+/.test(line)){
+        const t = stripInlineBold(line.replace(/^\*\s+/, '').trim());
+        doc.setFont('helvetica','normal'); doc.setFontSize(10);
+        const wrapped = doc.splitTextToSize(`• ${t}`, wrapW - (listX - margin));
+        ensureSpace(14 * wrapped.length);
+        doc.text(wrapped, listX, y);
+        y += wrapped.length * 12;
+        continue;
+      }
+
+      const t = stripInlineBold(line);
+      const emailMatch = /^Email:\s+(.+)$/.exec(t);
+      doc.setFont('helvetica','normal'); doc.setFontSize(10);
+
+      if (emailMatch){
+        const prefix = 'Email: ';
+        const email = emailMatch[1].trim();
+        ensureSpace(14);
+        doc.text(prefix, paraX, y);
+        const px = paraX + doc.getTextWidth(prefix);
+        if (doc.textWithLink) {
+          doc.textWithLink(email, px, y, { url: `mailto:${email}` });
+        } else {
+          doc.text(email, px, y);
+          doc.link(px, y-8, doc.getTextWidth(email), 10, { url: `mailto:${email}` });
+        }
+        y += 12; continue;
+      }
+
+      const wrapped = doc.splitTextToSize(t, wrapW - (paraX - margin));
+      ensureSpace(14 * wrapped.length);
+      doc.text(wrapped, paraX, y);
+      y += wrapped.length * 12;
+    }
+    return y;
+  }
+
+  async function generatePdfFromTemplate(processedMd, signatureDataUrl){
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const margin = 48;
+    const paraX = margin + 12;
+    let y = margin;
+
+    y = drawMarkdown(doc, processedMd, y);
+
+    if (signatureDataUrl) {
+      y += 6;
+      const imgWidth = 260, imgHeight = 84;
+      doc.addImage(signatureDataUrl, 'PNG', paraX, y, imgWidth, imgHeight);
+      y += imgHeight + 6;
+    }
+
+    const nameSlug = slugifyName(collectData().fullName);
+    const filename = `consent_${nameSlug}_${todayYYYYMMDD()}.pdf`;
+
+    const blob = doc.output('blob');
+    const file = new File([blob], filename, { type: 'application/pdf' });
+    return { blob, file, filename };
+  }
+
+  async function tryWebShare(file, text){
+    if (navigator.canShare && navigator.canShare({ files: [file] })){
+      try { await navigator.share({ title: 'Consent Form', text, files: [file] }); return true; }
+      catch { return false; }
+    }
+    return false;
+  }
+
+  async function postToFormspree(fd){
+    const resp = await fetch(FORMSPREE_ENDPOINT, { method: 'POST', body: fd, headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) throw new Error('Form endpoint error');
+    return resp.json().catch(() => ({}));
+  }
+
+  function offerDownload(file){
+    const url = URL.createObjectURL(file);
+    downloadBtn.classList.remove('hidden');
+    downloadBtn.onclick = () => {
+      const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+      downloadBtn.onclick = null;
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    };
+  }
+
+  function emailBody(data){
+    return [
+      `Name: ${data.fullName}`,
+      data.dob ? `DOB: ${data.dob}` : '',
+      `Address: ${RESIDENCE_ADDRESS}`,
+      data.children ? `Children: ${data.children}` : '',
+      data.email ? `Email: ${data.email}` : '',
+      data.phone ? `Phone: ${data.phone}` : '',
+      `Date & Time: ${data.now}`,
+      '',
+      'The signed PDF is attached if you use the system Share sheet. If not, please attach the downloaded PDF manually.'
+    ].filter(Boolean).join('\n');
+  }
+
+  function makeMailtoLink(to, subject, body){
+    const s = encodeURIComponent(subject);
+    const b = encodeURIComponent(body);
+    return `mailto:${encodeURIComponent(to)}?subject=${s}&body=${b}`;
+  }
+
+  async function buildFile(){
+    validateFormOrThrow();
+    const processedMd = renderConsentPreview();
+    const sigDataUrl = signaturePad.toDataURL('image/png');
+    return await generatePdfFromTemplate(processedMd, sigDataUrl);
+  }
+
+  // DOWNLOAD-ONLY
+  downloadOnlyBtn.addEventListener('click', async () => {
+    msgEl.innerHTML = '';
+    try {
+      const { file } = await buildFile();
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      toast('PDF downloaded. You can attach it to any email or messenger.');
+    } catch (e){
+      if (!(e && e.message === '__validation__')) {
+        toast('Failed to generate PDF.');
+      }
+    }
+  });
+
+  // SEND
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault(); msgEl.innerHTML = '';
+    if (fmt(document.getElementById('website').value)) return;
+
+    sendBtn.disabled = true; sendBtn.textContent = 'Processing…';
+
+    try {
+      const { file } = await buildFile();
+      const data = collectData();
+      const body = emailBody(data);
+
+      const mode = (() => {
+        if (SEND_MODE !== 'auto') return SEND_MODE;
+        if (navigator.canShare && navigator.canShare({ files: [file] })) return 'share';
+        if (FORMSPREE_ENDPOINT) return 'formspree';
+        return 'mailto';
+      })();
+
+      if (mode === 'share'){
+        const ok = await tryWebShare(file, 'Consent form attached');
+        if (ok){ toast('Share sheet opened. Choose Mail to send with the PDF attached.'); }
+        else {
+          offerDownload(file);
+          const link = makeMailtoLink(EMAIL_TO, 'Consent Form', body);
+          location.href = link;
+          toast('Share failed. Opened your mail app. If no attachment appears, use Download PDF and attach manually.');
+        }
+      } else if (mode === 'formspree'){
+        const fd = new FormData();
+        const d = collectData(); Object.entries(d).forEach(([k,v]) => fd.append(k, v));
+        try { fd.append('attachment', file, file.name); } catch {}
+        if (EMAIL_TO) fd.append('_to', EMAIL_TO);
+        await postToFormspree(fd);
+        toast('Sent via form endpoint. Check your inbox/service dashboard.');
+      } else {
+        offerDownload(file);
+        const link = makeMailtoLink(EMAIL_TO, 'Consent Form', body);
+        location.href = link;
+        toast('Opened your mail app. Attach the downloaded PDF and send.');
+      }
+
+    } catch (err){
+      if (!(err && err.message === '__validation__')) {
+        toast('Failed to generate/send PDF.');
+      }
+    } finally {
+      sendBtn.disabled = false; sendBtn.textContent = 'Generate PDF & Send';
+    }
+  });
+
+  // Init
+  (function init(){
+    // Max date is today (HTML-level constraint)
+    dobEl.max = todayYYYYMMDD();
+    renderConsentPreview();
+  })();
+  </script>
+</body>
+</html>
