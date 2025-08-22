@@ -107,8 +107,8 @@
       <input type="text" name="website" id="website" class="hidden" autocomplete="off" tabindex="-1" />
 
       <div class="btns">
-        <button id="sendBtn" type="submit" class="btn secondary hidden">Generate PDF & Send</button>
-        <button id="downloadOnlyBtn" type="button" class="btn">Download PDF</button>
+        <button id="sendBtn" type="button" class="btn">Generate PDF & Send</button>
+        <button id="downloadOnlyBtn" type="button" class="btn secondary">Download PDF</button>
       </div>
 
       <div id="msg" style="margin-top:12px" role="status" aria-live="polite" tabindex="-1"></div>
@@ -193,6 +193,7 @@ Drawn signature:`;
   const dobEl = document.getElementById('dob');         // hidden ISO
   const dobTextEl = document.getElementById('dobText'); // visible MM/DD/YYYY
   const copyEmailBtn = document.getElementById('copyEmailBtn');
+  const sendBtn = document.getElementById('sendBtn');
 
   let signaturePad;
   let isBusy = false;
@@ -581,7 +582,7 @@ Drawn signature:`;
     try {
       const { file } = await buildPdfFile();
       const url = URL.createObjectURL(file);
-      const a = document.createElement('a'); a.href = url; a.rel = 'noopener';  a.target = '_blank'; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1500);
       toast('PDF downloaded. You can attach it to any email or messenger.');
     } catch (e){
@@ -597,7 +598,52 @@ Drawn signature:`;
 
   downloadOnlyBtn.addEventListener('click', handleDownloadClick);
 
-  // SUBMIT → act same as download-only
+  async function handleShareClick(){
+    msgEl.innerHTML = '';
+    sendBtn.disabled = true;
+    const oldText = sendBtn.textContent;
+    sendBtn.textContent = 'Processing…';
+    isBusy = true;
+    try {
+      const { file } = await buildPdfFile();
+
+      // Preferred path: Web Share API with files (mobile Safari/Chrome)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Consent PDF',
+          text: 'Please find the signed consent PDF attached.'
+        });
+        toast('Share dialog opened.');
+      } else if (navigator.share) {
+        // Some desktops support share but not files: fall back to download + instruct
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        // Attempt a simple share with text (no attachment). Not critical if it fails.
+        try { await navigator.share({ title: 'Consent PDF', text: 'The PDF was downloaded. Please attach it from your Downloads.' }); } catch {}
+        toast('Sharing with attachment is not supported here. The PDF was downloaded; attach it manually.');
+      } else {
+        // No Web Share API: just download
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        toast('Sharing is not supported on this device. The PDF was downloaded; attach it manually.');
+      }
+    } catch (e){
+      if (!(e && e.message === '__validation__')) {
+        toast('Failed to generate PDF.', 'error');
+      }
+    } finally {
+      isBusy = false;
+      sendBtn.disabled = false;
+      sendBtn.textContent = oldText;
+    }
+  }
+
+  sendBtn.addEventListener('click', handleShareClick);
+
+  // SUBMIT → keep as "download-only" for Enter key behavior
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (trimVal(document.getElementById('website').value)) return; // honeypot
