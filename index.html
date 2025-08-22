@@ -26,10 +26,11 @@
     .btns { display:flex; gap:10px; flex-wrap: wrap; margin-top: 14px; }
     button, .btn { cursor: pointer; border: 1px solid transparent; padding: 10px 14px; border-radius: 10px; background: #111827; color: white; font-weight: 600; }
     .btn.secondary { background: #f3f4f6; color:#111827; border-color:#e5e7eb; }
+    .btn.ghost { background:#fff; color:#111827; border:1px solid #e5e7eb; }
     .success { color:#065f46; background:#ecfdf5; border:1px solid #a7f3d0; padding:10px 12px; border-radius:10px; }
     .small { font-size: .85rem; color:#6b7280; }
     .hidden { display:none !important; }
-    .info { background:#eef2ff; border:1px solid #c7d2fe; color:#1e3a8a; padding:10px 12px; border-radius:10px; }
+    .info { background:#eef2ff; border:1px solid #c7d2fe; color:#1e3a8a; padding:10px 12px; border-radius:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .field-error { color:#991b1b; background:#fef2f2; border:1px solid #fecaca; padding:8px 10px; border-radius:8px; margin-top:8px; font-size:.85rem; }
     .check-wrap { display:flex; align-items:center; gap:10px; width:100%; margin-top:10px; }
     .check-wrap input[type="checkbox"] { flex:0 0 auto; width:18px; height:18px; }
@@ -51,9 +52,12 @@
                  autocomplete="name" autocapitalize="words" spellcheck="false" />
         </div>
         <div>
-          <label for="dob">Date of Birth *</label>
-          <!-- Native browser date picker; optional in validation, star stays in UI -->
-          <input id="dob" name="bday" type="date" min="1900-01-01" autocomplete="bday" />
+          <label for="dobText">Date of Birth *</label>
+          <!-- Mobile-friendly text input + browser autofill -->
+          <input id="dobText" name="bdayText" inputmode="numeric" autocomplete="bday"
+                 placeholder="MM/DD/YYYY" maxlength="10" spellcheck="false" />
+          <!-- Hidden normalized ISO date used by logic -->
+          <input id="dob" name="bday" type="hidden" />
         </div>
       </fieldset>
 
@@ -85,7 +89,7 @@
         <div class="sig-wrap" id="sigWrap">
           <canvas id="sig"></canvas>
           <div class="btns">
-            <button type="button" class="btn secondary" id="clearSig">Clear signature</button>
+            <button type="button secondary" class="btn" id="clearSig">Clear signature</button>
           </div>
           <div class="small">Tip: rotate your phone to landscape for easier signing.</div>
           <div id="sigError" class="field-error hidden">Please provide a drawn signature.</div>
@@ -93,16 +97,18 @@
       </fieldset>
 
       <div class="info" style="margin-bottom:12px">
-        Please email the generated PDF to
-        <a href="mailto:yury.semerikov@gmail.com">yury.semerikov@gmail.com</a>.
+        <span>Please email the generated PDF to
+          <a id="emailToLink" href="mailto:yury.semerikov@gmail.com">yury.semerikov@gmail.com</a>.
+        </span>
+        <button id="copyEmailBtn" type="button" class="btn ghost small" style="padding:6px 10px">Copy</button>
       </div>
 
+      <!-- Honeypot anti-bot field (kept hidden intentionally) -->
       <input type="text" name="website" id="website" class="hidden" autocomplete="off" tabindex="-1" />
 
       <div class="btns">
-        <button id="sendBtn" type="submit">Generate PDF & Send</button>
-        <button id="downloadOnlyBtn" type="button" class="btn secondary">Download PDF only</button>
-        <button id="downloadBtn" type="button" class="btn secondary hidden">Download PDF</button>
+        <button id="sendBtn" type="submit" class="btn secondary hidden">Generate PDF & Send</button>
+        <button id="downloadOnlyBtn" type="button" class="btn">Download PDF</button>
       </div>
 
       <div id="msg" style="margin-top:12px" role="status" aria-live="polite" tabindex="-1"></div>
@@ -110,6 +116,7 @@
       <fieldset style="margin-top:14px">
         <div class="small" style="margin:6px 0 6px">Preview below is the exact text that will be embedded in the PDF.</div>
         <div id="consentPreview" class="md-preview"></div>
+        <!-- Internal storage of rendered markdown (hidden by design) -->
         <textarea id="consentText" name="consentText" class="hidden" readonly></textarea>
       </fieldset>
     </form>
@@ -123,9 +130,7 @@
 
   <script>
   // ====== SETTINGS ======
-  const SEND_MODE = 'auto';
   const EMAIL_TO = 'yury.semerikov@gmail.com';
-  const FORMSPREE_ENDPOINT = '';
   const RESIDENCE_ADDRESS = '7008 Richland Ct, Roswell, GA 30076';
   // ====== /SETTINGS ======
 
@@ -172,45 +177,34 @@ Date: [MM/DD/YYYY]
 Drawn signature:`;
   // ====== /TEMPLATE ======
 
+  // Element refs
   const form = document.getElementById('consentForm');
   const sigCanvas = document.getElementById('sig');
   const sigWrap = document.getElementById('sigWrap');
   const sigError = document.getElementById('sigError');
   const clearSigBtn = document.getElementById('clearSig');
   const msgEl = document.getElementById('msg');
-  const downloadBtn = document.getElementById('downloadBtn');
   const downloadOnlyBtn = document.getElementById('downloadOnlyBtn');
-  const sendBtn = document.getElementById('sendBtn');
   const consentTextTA = document.getElementById('consentText');
   const consentPreviewEl = document.getElementById('consentPreview');
   const childrenEl = document.getElementById('children');
   const noChildrenEl = document.getElementById('noChildren');
   const emailEl = document.getElementById('email');
-  const dobEl = document.getElementById('dob');
+  const dobEl = document.getElementById('dob');         // hidden ISO
+  const dobTextEl = document.getElementById('dobText'); // visible MM/DD/YYYY
+  const copyEmailBtn = document.getElementById('copyEmailBtn');
 
-  function resizeCanvas() {
-    const ratio = Math.max(window.devicePixelRatio || 1, 1);
-    const rect = sigCanvas.getBoundingClientRect();
-    sigCanvas.width = rect.width * ratio;
-    sigCanvas.height = parseInt(getComputedStyle(sigCanvas).height, 10) * ratio;
-    const ctx = sigCanvas.getContext('2d');
-    ctx.scale(ratio, ratio);
-  }
-  resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
-
-  const signaturePad = new SignaturePad(sigCanvas, { minWidth: 0.7, maxWidth: 1.6, penColor: '#111827' });
-  clearSigBtn.addEventListener('click', () => { signaturePad.clear(); sigWrap.classList.remove('invalid'); sigError.classList.add('hidden'); });
-  sigCanvas.addEventListener('pointerdown', () => { sigWrap.classList.remove('invalid'); sigError.classList.add('hidden'); });
+  let signaturePad;
+  let isBusy = false;
 
   function toast(html, type = 'success') {
     msgEl.innerHTML = `<div class="${type}">${html}</div>`;
     msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    msgEl.focus({ preventScroll: true });
+    try { msgEl.focus({ preventScroll: true }); } catch {}
   }
-  const fmt = v => (v || '').toString().trim();
+  const trimVal = v => (v || '').toString().trim();
 
-  function todayYYYYMMDD(){
+  function todayYyyyMmDd(){
     const d = new Date();
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -226,22 +220,83 @@ Drawn signature:`;
       .replace(/_{2,}/g, '_');
   }
 
-  // Format DOB for template/email as MM/DD/YYYY from <input type="date"> (YYYY-MM-DD)
-  function dobAsMMDDYYYY(){
+  // ==== DOB helpers (MM/DD/YYYY <-> ISO) ====
+  function parseDobTextToIso(v){
+    if (!v) return '';
+    v = v.replace(/[^\d/]/g, '').trim();
+    // allow M/D/YYYY or MM/DD/YYYY
+    const parts = v.split('/');
+    if (parts.length !== 3) return '';
+    let [m, d, y] = parts.map(p => p.trim());
+    if (!y || y.length !== 4) return '';
+    m = m.padStart(2,'0'); d = d.padStart(2,'0');
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(`${m}/${d}/${y}`)) return '';
+    // validate date and range
+    const iso = `${y}-${m}-${d}`;
+    const dt = new Date(iso + 'T00:00:00');
+    if (Number.isNaN(dt.getTime())) return '';
+    // check month/day integrity (e.g., 02/30 invalid)
+    if (dt.getUTCFullYear() !== +y || (dt.getUTCMonth()+1) !== +m || dt.getUTCDate() !== +d) return '';
+    if (iso < '1900-01-01' || iso > todayYyyyMmDd()) return '';
+    return iso;
+  }
+  function formatDobAsMmDdYyyy(){
     const v = dobEl.value;
     if (!v) return '';
     const [y,m,d] = v.split('-');
-    if (!y || !m || !d) return '';
     return `${m}/${d}/${y}`;
   }
+  function autoFormatDobInput(e){
+    let v = e.target.value.replace(/[^\d]/g,'');
+    if (v.length > 8) v = v.slice(0,8);
+    if (v.length > 4) v = v.slice(0,2) + '/' + v.slice(2,4) + '/' + v.slice(4);
+    else if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
+    e.target.value = v;
+  }
+  function syncDobHiddenFromText(){
+    const iso = parseDobTextToIso(trimVal(dobTextEl.value));
+    dobEl.value = iso; // empty string if invalid/empty
+  }
 
-  function collectData(){
+  // ==== Signature canvas (preserve on resize) ====
+  function resizeSignatureCanvas(preserve=true) {
+    if (isBusy) return; // don't touch while generating
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    const rect = sigCanvas.getBoundingClientRect();
+    let saved = null;
+    if (preserve && signaturePad && !signaturePad.isEmpty()){
+      try { saved = signaturePad.toData(); } catch {}
+    }
+    sigCanvas.width = rect.width * ratio;
+    sigCanvas.height = parseInt(getComputedStyle(sigCanvas).height, 10) * ratio;
+    const ctx = sigCanvas.getContext('2d');
+    ctx.scale(ratio, ratio);
+    if (signaturePad){
+      if (saved && saved.length){
+        signaturePad.clear();
+        try { signaturePad.fromData(saved); } catch {}
+      } else {
+        signaturePad.clear();
+      }
+    }
+  }
+
+  function initSignatureCanvas(){
+    resizeSignatureCanvas(false);
+    signaturePad = new SignaturePad(sigCanvas, { minWidth: 0.7, maxWidth: 1.6, penColor: '#111827' });
+    clearSigBtn.addEventListener('click', () => { signaturePad.clear(); sigWrap.classList.remove('invalid'); sigError.classList.add('hidden'); });
+    sigCanvas.addEventListener('pointerdown', () => { sigWrap.classList.remove('invalid'); sigError.classList.add('hidden'); });
+    window.addEventListener('resize', () => resizeSignatureCanvas(true));
+  }
+
+  // ====== collect & preview ======
+  function collectFormData(){
     return {
-      fullName: fmt(document.getElementById('fullName').value),
-      dob: dobAsMMDDYYYY(),
-      phone: fmt(document.getElementById('phone').value),
-      email: fmt(emailEl.value),
-      children: fmt(childrenEl.value),
+      fullName: trimVal(document.getElementById('fullName').value),
+      dob: formatDobAsMmDdYyyy(),
+      phone: trimVal(document.getElementById('phone').value),
+      email: trimVal(emailEl.value),
+      children: trimVal(childrenEl.value),
       noChildren: !!noChildrenEl.checked,
       now: (() => {
         const t = new Date();
@@ -253,10 +308,9 @@ Drawn signature:`;
     };
   }
 
-  // ASCII/Latin-only regexes
-  const NAME_ASCII = /^[A-Za-z0-9 .,'-]+$/;
-  const CHILDREN_ASCII = /^[A-Za-z0-9 .,'-]+(?:\s*,\s*[A-Za-z0-9 .,'-]+)*$/;
-  const PHONE_ASCII = /^[0-9()+\-.\s]+$/;
+  const NAME_ALLOWED_CHARS = /^[A-Za-z0-9 .,'-]+$/;
+  const CHILDREN_ALLOWED_CHARS = /^[A-Za-z0-9 .,'-]+(?:\s*,\s*[A-Za-z0-9 .,'-]+)*$/;
+  const PHONE_ALLOWED_CHARS = /^[0-9()+\-.\s]+$/;
 
   function scrollAndFocus(el){
     el.scrollIntoView({ behavior:'smooth', block:'center' });
@@ -264,7 +318,7 @@ Drawn signature:`;
   }
 
   function clearCustomValidityAll(){
-    ['fullName','dob','phone','email','children'].forEach(id => {
+    ['fullName','phone','email','children','dobText'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.setCustomValidity('');
     });
@@ -277,15 +331,15 @@ Drawn signature:`;
     throw new Error('__validation__');
   }
 
-  function validateOptionalEmail(){
-    const v = fmt(emailEl.value);
+  function validateOptionalEmailField(){
+    const v = trimVal(emailEl.value);
     if (v && !emailEl.checkValidity()){
       raise(emailEl, 'Please enter a valid email address or clear the field.');
     }
     emailEl.setCustomValidity('');
   }
 
-  function toggleChildrenDisabled(){
+  function handleChildrenToggle(){
     if (noChildrenEl.checked){
       childrenEl.disabled = true;
       childrenEl.value = '';
@@ -293,12 +347,12 @@ Drawn signature:`;
     } else {
       childrenEl.disabled = false;
     }
-    renderConsentPreview();
+    renderConsentMarkdownPreview();
   }
-  noChildrenEl.addEventListener('change', toggleChildrenDisabled);
+  noChildrenEl.addEventListener('change', handleChildrenToggle);
 
-  function renderConsentPreview(){
-    const data = collectData();
+  function renderConsentMarkdownPreview(){
+    const data = collectFormData();
     let s = CONSENT_MD_TEMPLATE;
 
     const baseTokens = {
@@ -339,10 +393,11 @@ Drawn signature:`;
   }
 
   // Live updates
-  ['fullName','phone','email','children','dob'].forEach(id => {
+  ['fullName','phone','email','children','dobText'].forEach(id => {
     const el = document.getElementById(id);
-    el.addEventListener('input', () => { el.setCustomValidity(''); renderConsentPreview(); });
-    el.addEventListener('change', () => { el.setCustomValidity(''); renderConsentPreview(); });
+    if (!el) return;
+    el.addEventListener('input', () => { el.setCustomValidity(''); if (el===dobTextEl){ autoFormatDobInput({target:el}); syncDobHiddenFromText(); } renderConsentMarkdownPreview(); });
+    el.addEventListener('change', () => { el.setCustomValidity(''); if (el===dobTextEl){ syncDobHiddenFromText(); } renderConsentMarkdownPreview(); });
   });
 
   // Unified validation (Name → DOB → Phone → Email → Children → Signature)
@@ -350,25 +405,30 @@ Drawn signature:`;
     clearCustomValidityAll();
 
     const fullNameEl = document.getElementById('fullName');
-    if (!fmt(fullNameEl.value)) raise(fullNameEl, 'Full Name is required.');
-    if (!NAME_ASCII.test(fullNameEl.value)) raise(fullNameEl, "Use English letters/digits and common symbols only: space . , ' -");
+    if (!trimVal(fullNameEl.value)) raise(fullNameEl, 'Full Name is required.');
+    if (!NAME_ALLOWED_CHARS.test(fullNameEl.value)) raise(fullNameEl, "Use English letters/digits and common symbols only: space . , ' -");
 
-    // DOB is optional; if provided, rely on built-in validity only
-    if (dobEl.value && !dobEl.checkValidity()){
-      raise(dobEl, 'Please enter a valid date (YYYY-MM-DD).');
+    // DOB optional; if filled — validate MM/DD/YYYY and range
+    const dobText = trimVal(dobTextEl.value);
+    if (dobText){
+      const iso = parseDobTextToIso(dobText);
+      if (!iso) raise(dobTextEl, 'Please enter a valid date (MM/DD/YYYY), 1900…today.');
+      dobEl.value = iso;
+    } else {
+      dobEl.value = '';
     }
 
     const phoneEl = document.getElementById('phone');
-    if (!fmt(phoneEl.value)) raise(phoneEl, 'Phone is required.');
-    if (!PHONE_ASCII.test(phoneEl.value)) raise(phoneEl, 'Phone can include digits, spaces, +, -, (), and . only.');
+    if (!trimVal(phoneEl.value)) raise(phoneEl, 'Phone is required.');
+    if (!PHONE_ALLOWED_CHARS.test(phoneEl.value)) raise(phoneEl, 'Phone can include digits, spaces, +, -, (), and . only.');
 
-    validateOptionalEmail();
+    validateOptionalEmailField();
 
-    const data = collectData();
+    const data = collectFormData();
     if (!data.children && !data.noChildren){
       raise(childrenEl, 'Please enter child’s full name(s) or check “I confirm there are no children.”');
     }
-    if (data.children && !CHILDREN_ASCII.test(data.children)){
+    if (data.children && !CHILDREN_ALLOWED_CHARS.test(data.children)){
       raise(childrenEl, "For names, use English letters/digits and , . ' - (comma-separated).");
     }
 
@@ -495,137 +555,81 @@ Drawn signature:`;
       y += imgHeight + 6;
     }
 
-    const nameSlug = slugifyName(collectData().fullName);
-    const filename = `consent_${nameSlug}_${todayYYYYMMDD()}.pdf`;
+    const nameSlug = slugifyName(collectFormData().fullName);
+    const filename = `consent_${nameSlug}_${todayYyyyMmDd()}.pdf`;
 
     const blob = doc.output('blob');
     const file = new File([blob], filename, { type: 'application/pdf' });
     return { blob, file, filename };
   }
 
-  async function tryWebShare(file, text){
-    if (navigator.canShare && navigator.canShare({ files: [file] })){
-      try { await navigator.share({ title: 'Consent Form', text, files: [file] }); return true; }
-      catch { return false; }
-    }
-    return false;
-  }
-
-  async function postToFormspree(fd){
-    const resp = await fetch(FORMSPREE_ENDPOINT, { method: 'POST', body: fd, headers: { 'Accept': 'application/json' } });
-    if (!resp.ok) throw new Error('Form endpoint error');
-    return resp.json().catch(() => ({}));
-  }
-
-  function offerDownload(file){
-    const url = URL.createObjectURL(file);
-    downloadBtn.classList.remove('hidden');
-    downloadBtn.onclick = () => {
-      const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
-      downloadBtn.onclick = null;
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    };
-  }
-
-  function emailBody(data){
-    return [
-      `Name: ${data.fullName}`,
-      data.dob ? `DOB: ${data.dob}` : '',
-      `Address: ${RESIDENCE_ADDRESS}`,
-      data.children ? `Children: ${data.children}` : '',
-      data.email ? `Email: ${data.email}` : '',
-      data.phone ? `Phone: ${data.phone}` : '',
-      `Date & Time: ${data.now}`,
-      '',
-      'The signed PDF is attached if you use the system Share sheet. If not, please attach the downloaded PDF manually.'
-    ].filter(Boolean).join('\n');
-  }
-
-  function makeMailtoLink(to, subject, body){
-    const s = encodeURIComponent(subject);
-    const b = encodeURIComponent(body);
-    return `mailto:${encodeURIComponent(to)}?subject=${s}&body=${b}`;
-  }
-
-  async function buildFile(){
+  async function buildPdfFile(){
     validateFormOrThrow();
-    const processedMd = renderConsentPreview();
+    const processedMd = renderConsentMarkdownPreview();
+    // Important: capture signature before any potential resize
     const sigDataUrl = signaturePad.toDataURL('image/png');
     return await generatePdfFromTemplate(processedMd, sigDataUrl);
   }
 
-  // DOWNLOAD-ONLY
-  downloadOnlyBtn.addEventListener('click', async () => {
+  // DOWNLOAD
+  async function handleDownloadClick(){
     msgEl.innerHTML = '';
+    downloadOnlyBtn.disabled = true;
+    const oldText = downloadOnlyBtn.textContent;
+    downloadOnlyBtn.textContent = 'Processing…';
+    isBusy = true;
     try {
-      const { file } = await buildFile();
+      const { file } = await buildPdfFile();
       const url = URL.createObjectURL(file);
       const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1500);
       toast('PDF downloaded. You can attach it to any email or messenger.');
     } catch (e){
       if (!(e && e.message === '__validation__')) {
-        toast('Failed to generate PDF.');
-      }
-    }
-  });
-
-  // SEND
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault(); msgEl.innerHTML = '';
-    if (fmt(document.getElementById('website').value)) return;
-
-    sendBtn.disabled = true; sendBtn.textContent = 'Processing…';
-
-    try {
-      const { file } = await buildFile();
-      const data = collectData();
-      const body = emailBody(data);
-
-      const mode = (() => {
-        if (SEND_MODE !== 'auto') return SEND_MODE;
-        if (navigator.canShare && navigator.canShare({ files: [file] })) return 'share';
-        if (FORMSPREE_ENDPOINT) return 'formspree';
-        return 'mailto';
-      })();
-
-      if (mode === 'share'){
-        const ok = await tryWebShare(file, 'Consent form attached');
-        if (ok){ toast('Share sheet opened. Choose Mail to send with the PDF attached.'); }
-        else {
-          offerDownload(file);
-          const link = makeMailtoLink(EMAIL_TO, 'Consent Form', body);
-          location.href = link;
-          toast('Share failed. Opened your mail app. If no attachment appears, use Download PDF and attach manually.');
-        }
-      } else if (mode === 'formspree'){
-        const fd = new FormData();
-        const d = collectData(); Object.entries(d).forEach(([k,v]) => fd.append(k, v));
-        try { fd.append('attachment', file, file.name); } catch {}
-        if (EMAIL_TO) fd.append('_to', EMAIL_TO);
-        await postToFormspree(fd);
-        toast('Sent via form endpoint. Check your inbox/service dashboard.');
-      } else {
-        offerDownload(file);
-        const link = makeMailtoLink(EMAIL_TO, 'Consent Form', body);
-        location.href = link;
-        toast('Opened your mail app. Attach the downloaded PDF and send.');
-      }
-
-    } catch (err){
-      if (!(err && err.message === '__validation__')) {
-        toast('Failed to generate/send PDF.');
+        toast('Failed to generate PDF.', 'error');
       }
     } finally {
-      sendBtn.disabled = false; sendBtn.textContent = 'Generate PDF & Send';
+      isBusy = false;
+      downloadOnlyBtn.disabled = false;
+      downloadOnlyBtn.textContent = oldText;
+    }
+  }
+
+  downloadOnlyBtn.addEventListener('click', handleDownloadClick);
+
+  // SUBMIT → act same as download-only
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (trimVal(document.getElementById('website').value)) return; // honeypot
+    await handleDownloadClick();
+  });
+
+  // Copy email to clipboard
+  copyEmailBtn.addEventListener('click', async () => {
+    const btn = copyEmailBtn;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(EMAIL_TO);
+      } else {
+        const tmp = document.createElement('input');
+        tmp.value = EMAIL_TO; document.body.appendChild(tmp);
+        tmp.select(); document.execCommand('copy'); document.body.removeChild(tmp);
+      }
+      const prev = btn.textContent; btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = prev; }, 1200);
+    } catch {
+      toast('Could not copy email address.', 'error');
     }
   });
 
-  // Init
+  // ==== init ====
   (function init(){
-    // Max date is today (HTML-level constraint)
-    dobEl.max = todayYYYYMMDD();
-    renderConsentPreview();
+    initSignatureCanvas();
+    // Initialize DOB text field behavior and sync
+    dobTextEl.addEventListener('input', autoFormatDobInput);
+    dobTextEl.addEventListener('blur', () => { syncDobHiddenFromText(); renderConsentMarkdownPreview(); });
+
+    renderConsentMarkdownPreview();
   })();
   </script>
 </body>
